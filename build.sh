@@ -208,7 +208,7 @@ upload_kernel_to_telegram() {
     CAPTION="*$DATE*
 \`\`\`
 $KERNEL_VER
-\`\`\`
+\`\`\`"
 
     # Upload kernel ZIP to Telegram
     log "$green Uploading kernel ZIP: $FINAL_KERNEL_ZIP $nocol"
