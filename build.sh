@@ -205,12 +205,10 @@ upload_kernel_to_telegram() {
     fi
 
     # Create caption for successful build
-    CAPTION="*A22-$DATE*
+    CAPTION="*$DATE*
 \`\`\`
-LocalVersion :
 $KERNEL_VER
 \`\`\`
-*Flash via TWRP only*"
 
     # Upload kernel ZIP to Telegram
     log "$green Uploading kernel ZIP: $FINAL_KERNEL_ZIP $nocol"
@@ -235,7 +233,7 @@ clean_up() {
     log "$cyan ***********************************************"
     log "          All done !!!         "
     log "*********************************************** $nocol"
-    rm -rf "$ANYKERNEL3_DIR"
+    rm -rf "$ANYKERNEL3_DIR" *.log *.zip
 }
 
 # Main script execution
