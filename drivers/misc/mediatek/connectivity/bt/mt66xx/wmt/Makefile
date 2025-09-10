@@ -4,6 +4,14 @@
 ###############################################################################
 # Necessary Check
 
+ifneq ($(KERNEL_OUT),)
+    ccflags-y += -imacros $(KERNEL_OUT)/include/generated/autoconf.h
+endif
+
+ifndef TOP
+    TOP := $(srctree)/..
+endif
+
 #ifneq ($(CFG_BT_PM_QOS_CONTROL),)
 #    ccflags-y += -D PM_QOS_CONTROL=1
 #else
@@ -61,3 +69,6 @@ ccflags-y += -D CREATE_NODE_DYNAMIC=1
 
 $(MODULE_NAME)-objs += stp_chrdev_bt.o
 $(MODULE_NAME)-objs += btmtk_dbg.o btmtk_dbg_tp_evt_if.o
+ifneq ($(CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH),)
+$(MODULE_NAME)-objs += fw_log_bt.o
+endif

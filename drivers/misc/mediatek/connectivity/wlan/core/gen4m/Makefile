@@ -23,10 +23,17 @@ ccflags-y += -DCFG_VIRTUAL_OS
 ccflags-y += -DCFG_REMIND_IMPLEMENT
 endif
 
+ifndef TOP
+    TOP := $(srctree)/..
+endif
 $(info os option: $(os))
 # ---------------------------------------------------
 # ALPS Setting
 # ---------------------------------------------------
+ifneq ($(KERNEL_OUT),)
+    ccflags-y += -imacros $(KERNEL_OUT)/include/generated/autoconf.h
+endif
+
 ifeq ($(KBUILD_MODPOST_FAIL_ON_WARNINGS),)
     # Force build fail on modpost warning
     KBUILD_MODPOST_FAIL_ON_WARNINGS=y
@@ -312,6 +319,18 @@ ifeq ($(CONFIG_MTK_WIFI_CONNINFRA_SUPPORT), y)
     ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/include
     ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/power_throttling
     ccflags-y += -DCFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT=1
+    ifneq ($(CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH),)
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/platform/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/base/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/connsyslog
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/coredump
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/coredump/platform/include
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/conninfra/debug_utility/metlog
+        ccflags-y += -I$(srctree)/drivers/misc/mediatek/connectivity/wlan/adaptor
+    endif
 else
     ccflags-y += -DCFG_SUPPORT_CONNINFRA=0
     ccflags-y += -DCFG_ANDORID_CONNINFRA_COREDUMP_SUPPORT=0
@@ -466,6 +485,7 @@ else
 ccflags-y += -DCFG_SUPPORT_NAN=0
 endif
 
+MODULE_NAME := wlan_drv_gen4m
 ifeq ($(MODULE_NAME),)
 	MODULE_NAME := wlan_$(shell echo $(strip $(WLAN_CHIP_ID)) | tr A-Z a-z)_$(CONFIG_MTK_COMBO_WIFI_HIF)
 endif
@@ -529,8 +549,13 @@ obj-$(CONFIG_MTK_COMBO_WIFI) += $(MODULE_NAME).o
 endif
 
 ifeq ($(CONFIG_WLAN_DRV_BUILD_IN),y)
+$(warning $(MODULE_NAME) build-in boot.img)
 obj-y += $(MODULE_NAME).o
 ccflags-y += -DCONFIG_WLAN_DRV_BUILD_IN=1
+else
+$(warning $(MODULE_NAME) is kernel module)
+obj-m += $(MODULE_NAME).o
+ccflags-y += -DCONFIG_WLAN_DRV_BUILD_IN=0
 endif
 
 ifeq ($(CONFIG_MTK_WIFI_PKT_OFLD_SUPPORT), y)
@@ -873,9 +898,13 @@ endif
 # ---------------------------------------------------
 # Service git List
 # ---------------------------------------------------
-MTK_WLAN_SERVICE=yes
 SERVICE_DIR  := wlan_service/
-$(info SERVICE_DIR is [{$(SERVICE_DIR)}])
+
+ifneq ($(findstring wlan_service,$(MTK_WLAN_SERVICE_PATH)),)
+MTK_WLAN_SERVICE=yes
+SERVICE_DIR  := $(MTK_WLAN_SERVICE_PATH)
+$(info SERVICE_DIR is [{$(MTK_WLAN_SERVICE_PATH)}])
+endif
 
 ifeq ($(MTK_WLAN_SERVICE), yes)
 ccflags-y += -DCONFIG_WLAN_SERVICE=1
@@ -884,6 +913,7 @@ ccflags-y += -I$(src)/$(SERVICE_DIR)include
 ccflags-y += -I$(src)/$(SERVICE_DIR)service/include
 ccflags-y += -I$(src)/$(SERVICE_DIR)glue/osal/include
 ccflags-y += -I$(src)/$(SERVICE_DIR)glue/hal/include
+$(info $$CCFLAG is [{$(ccflags-y)}])
 SERVICE_OBJS := $(SERVICE_DIR)agent/agent.o \
                 $(SERVICE_DIR)service/service_test.o \
                 $(SERVICE_DIR)service/test_engine.o \

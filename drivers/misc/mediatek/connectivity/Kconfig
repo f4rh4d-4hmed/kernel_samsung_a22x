@@ -474,4 +474,3 @@ config WLAN_DRV_BUILD_IN
 	help
 	  This will build the wlan driver and the corresponding componenets
 	  into the kernel.
-	  If unsure say n
