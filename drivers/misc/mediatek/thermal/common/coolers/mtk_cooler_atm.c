@@ -471,7 +471,7 @@ mt_cpufreq_thermal_protect(unsigned int limited_power)
 }
 #endif
 #endif
-
+/*
 int __attribute__((weak))
 mtk_eara_thermal_pb_handle(int total_pwr_budget,
 			   int max_cpu_power, int max_gpu_power,
@@ -480,6 +480,7 @@ mtk_eara_thermal_pb_handle(int total_pwr_budget,
 	pr_notice("E_WF: %s doesn't exist\n", __func__);
 	return 0;
 }
+*/
 
 bool __attribute__((weak))
 mtk_get_gpu_loading(unsigned int *pLoading)
@@ -1232,40 +1233,40 @@ static int adjust_gpu_power(int power)
  */
 static int EARA_handled(int total_power)
 {
-#if defined(EARA_THERMAL_SUPPORT)
-	int total_power_eara;
+#ifdef CONFIG_MTK_EARA_THERMAL
+        int total_power_eara;
 
 #if defined(CATM_TPCB_EXTEND)
-	if (!g_turbo_bin)
-		return 0;
+        if (!g_turbo_bin)
+                return 0;
 #endif
 #if defined(THERMAL_APU_UNLIMIT)
-	if (cl_get_apu_status() == 1) {/*APU hint*/
-		total_power = 0;/*let EARA unlimit VPU/MDLA freq*/
-	}
+        if (cl_get_apu_status() == 1) {/*APU hint*/
+                total_power = 0;/*let EARA unlimit VPU/MDLA freq*/
+        }
 #endif
 
 #if defined(THERMAL_VPU_SUPPORT) && defined(THERMAL_MDLA_SUPPORT)
-	if (total_power == 0)
-		total_power_eara = 0;
-	else if (is_cpu_power_unlimit())
-		total_power_eara = total_power +
-			MAXIMUM_VPU_POWER + MAXIMUM_MDLA_POWER;
-	else
-		total_power_eara = total_power +
-			MINIMUM_VPU_POWER + MINIMUM_MDLA_POWER;
-	is_EARA_handled = mtk_eara_thermal_pb_handle(total_power_eara,
-		MAXIMUM_CPU_POWER, MAXIMUM_GPU_POWER,
-		MAXIMUM_VPU_POWER, MAXIMUM_MDLA_POWER);
+        if (total_power == 0)
+                total_power_eara = 0;
+        else if (is_cpu_power_unlimit())
+                total_power_eara = total_power +
+                        MAXIMUM_VPU_POWER + MAXIMUM_MDLA_POWER;
+        else
+                total_power_eara = total_power +
+                        MINIMUM_VPU_POWER + MINIMUM_MDLA_POWER;
+        is_EARA_handled = mtk_eara_thermal_pb_handle(total_power_eara,
+                MAXIMUM_CPU_POWER, MAXIMUM_GPU_POWER,
+                MAXIMUM_VPU_POWER, MAXIMUM_MDLA_POWER);
 #else
-	total_power_eara = total_power;
-	is_EARA_handled = mtk_eara_thermal_pb_handle(total_power_eara,
-		MAXIMUM_CPU_POWER, MAXIMUM_GPU_POWER, -1, -1);
+        total_power_eara = total_power;
+        is_EARA_handled = mtk_eara_thermal_pb_handle(total_power_eara,
+                MAXIMUM_CPU_POWER, MAXIMUM_GPU_POWER, -1, -1);
 #endif
-	return is_EARA_handled;
+        return is_EARA_handled;
 
 #else
-	return 0;
+        return 0;  /* Return 0 when EARA thermal is disabled */
 #endif
 }
 
