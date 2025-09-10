@@ -7,15 +7,15 @@ set -e
 
 # Define global variables
 SRC="$(pwd)"
-KBUILD_BUILD_USER="azure"
-KBUILD_BUILD_HOST="naifiprjkt"
+export KBUILD_BUILD_USER="azure"
+export KBUILD_BUILD_HOST="naifiprjkt"
 ANYKERNEL3_DIR=AK
 DEVICE=A226B
-VERSION=$(git rev-parse --abbrev-ref HEAD)
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
 KERNEL_DEFCONFIG=a22x_defconfig
 LOG_FILE="$SRC/build.log"
 COMPILATION_LOG="$SRC/compilation.log"
-FINAL_KERNEL_ZIP="$DEVICE-$VERSION-$(date +%Y%m%d-%H%M).zip"
+FINAL_KERNEL_ZIP="$DEVICE-$BRANCH-$(date +%Y%m%d-%H%M).zip"
 TOOLCHAIN_DIR="$SRC/toolchain"
 OUT_IMG="$SRC/out/arch/arm64/boot/Image.gz"
 
@@ -35,6 +35,16 @@ yellow='\033[0;33m'
 blue='\033[0;34m'
 cyan='\033[0;36m'
 nocol='\033[0m'
+
+# function clone KernelSU
+check_ksu() {
+    if [ ! -d "$SRC/KernelSU-Next" ]; then
+	log "$red KernelSU not found in $SRC/KernelSU-Next, Cloning...$nocol"
+	curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/refs/heads/next-susfs/kernel/setup.sh" | bash -s next-susfs
+    else
+	log "$green KernelSU already $nocol"
+    fi
+}
 
 # Function to log messages
 log() {
@@ -66,10 +76,10 @@ check_telegram_credentials() {
 set_toolchain() {
     # Check if toolchain exists, if not clone it
     if [ ! -d "$TOOLCHAIN_DIR" ]; then
-        log "[!]Toolchain not found in $TOOLCHAIN_DIR, cloning..."
+        log "$red Toolchain not found in $TOOLCHAIN_DIR, cloning...$nocol"
         git clone --depth=1 https://gitlab.com/neel0210/toolchain.git "$TOOLCHAIN_DIR"
     else
-        log "Toolchain found at $TOOLCHAIN_DIR"
+        log "$green Toolchain found at $TOOLCHAIN_DIR $nocol"
     fi
 
     # Set GCC, Clang, and Clang Triple paths
@@ -231,24 +241,24 @@ clean_up() {
 # Main script execution
 main() {
     log "$green Starting kernel build script v$SCRIPT_VERSION $nocol"
-    
+    check_ksu
     check_tools
     check_telegram_credentials
     set_toolchain
-    
+
     BUILD_START=$(date +"%s")
-    
+
     perform_clean_build
     build_kernel
     zip_kernel_files
-    
+
     BUILD_END=$(date +"%s")
     DIFF=$(($BUILD_END - $BUILD_START))
     log "$yellow Build completed in $(($DIFF / 60)) minute(s) and $(($DIFF % 60)) seconds. $nocol"
-    
+
     upload_kernel_to_telegram
     clean_up
-    
+
     log "$green Script execution completed successfully! $nocol"
 }
 
