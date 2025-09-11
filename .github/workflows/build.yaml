@@ -1,0 +1,38 @@
+name: BUILD KERNEL NORMAL
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Kernel Source
+        uses: actions/checkout@v3
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            bc bison build-essential ccache curl flex gcc gcc-aarch64-linux-gnu \
+            git gnupg gperf libncurses5-dev libssl-dev \
+            lld llvm make python3 rsync unzip wget zip zlib1g-dev
+
+      - name: Run build.sh
+        run: |
+          chmod +x build.sh
+          ./build.sh
+    
+      - name: Upload in telegram
+        run: |
+           chmod +x tg.sh
+           ./tg.sh
+           
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Kernel
+          path: AnyKernel3*.zip
+
+       
