@@ -51,15 +51,12 @@ static unsigned int max_gen_ptrs = INITIAL_NET_GEN_PTRS;
 
 static struct net_generic *net_alloc_generic(void)
 {
-	unsigned int gen_ptrs = READ_ONCE(max_gen_ptrs);
-	unsigned int generic_size;
 	struct net_generic *ng;
-
-	generic_size = offsetof(struct net_generic, ptr[gen_ptrs]);
+	unsigned int generic_size = offsetof(struct net_generic, ptr[max_gen_ptrs]);
 
 	ng = kzalloc(generic_size, GFP_KERNEL);
 	if (ng)
-		ng->s.len = gen_ptrs;
+		ng->s.len = max_gen_ptrs;
 
 	return ng;
 }
@@ -136,26 +133,13 @@ static void ops_free(const struct pernet_operations *ops, struct net *net)
 	}
 }
 
-static void ops_pre_exit_list(const struct pernet_operations *ops,
-			      struct list_head *net_exit_list)
-{
-	struct net *net;
-
-	if (ops->pre_exit) {
-		list_for_each_entry(net, net_exit_list, exit_list)
-			ops->pre_exit(net);
-	}
-}
-
 static void ops_exit_list(const struct pernet_operations *ops,
 			  struct list_head *net_exit_list)
 {
 	struct net *net;
 	if (ops->exit) {
-		list_for_each_entry(net, net_exit_list, exit_list) {
+		list_for_each_entry(net, net_exit_list, exit_list)
 			ops->exit(net);
-			cond_resched();
-		}
 	}
 	if (ops->exit_batch)
 		ops->exit_batch(net_exit_list);
@@ -197,9 +181,9 @@ static int net_eq_idr(int id, void *net, void *peer)
 	return 0;
 }
 
-/* Must be called from RCU-critical section or with nsid_lock held. If
- * a new id is assigned, the bool alloc is set to true, thus the
- * caller knows that the new id must be notified via rtnl.
+/* Should be called with nsid_lock held. If a new id is assigned, the bool alloc
+ * is set to true, thus the caller knows that the new id must be notified via
+ * rtnl.
  */
 static int __peernet2id_alloc(struct net *net, struct net *peer, bool *alloc)
 {
@@ -223,7 +207,7 @@ static int __peernet2id_alloc(struct net *net, struct net *peer, bool *alloc)
 	return NETNSA_NSID_NOT_ASSIGNED;
 }
 
-/* Must be called from RCU-critical section or with nsid_lock held */
+/* should be called with nsid_lock held */
 static int __peernet2id(struct net *net, struct net *peer)
 {
 	bool no = false;
@@ -256,10 +240,9 @@ int peernet2id(struct net *net, struct net *peer)
 {
 	int id;
 
-	rcu_read_lock();
+	spin_lock_bh(&net->nsid_lock);
 	id = __peernet2id(net, peer);
-	rcu_read_unlock();
-
+	spin_unlock_bh(&net->nsid_lock);
 	return id;
 }
 EXPORT_SYMBOL(peernet2id);
@@ -322,12 +305,6 @@ out_undo:
 	 */
 	list_add(&net->exit_list, &net_exit_list);
 	saved_ops = ops;
-	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
-		ops_pre_exit_list(ops, &net_exit_list);
-
-	synchronize_rcu();
-
-	ops = saved_ops;
 	list_for_each_entry_continue_reverse(ops, &pernet_list, list)
 		ops_exit_list(ops, &net_exit_list);
 
@@ -495,15 +472,10 @@ static void cleanup_net(struct work_struct *work)
 	}
 	rtnl_unlock();
 
-	/* Run all of the network namespace pre_exit methods */
-	list_for_each_entry_reverse(ops, &pernet_list, list)
-		ops_pre_exit_list(ops, &net_exit_list);
-
 	/*
 	 * Another CPU might be rcu-iterating the list, wait for it.
 	 * This needs to be before calling the exit() notifiers, so
 	 * the rcu_barrier() below isn't sufficient alone.
-	 * Also the pre_exit() and exit() methods need this barrier.
 	 */
 	synchronize_rcu();
 
@@ -789,7 +761,6 @@ struct rtnl_net_dump_cb {
 	int s_idx;
 };
 
-/* Runs in RCU-critical section. */
 static int rtnl_net_dumpid_one(int id, void *peer, void *data)
 {
 	struct rtnl_net_dump_cb *net_cb = (struct rtnl_net_dump_cb *)data;
@@ -820,9 +791,9 @@ static int rtnl_net_dumpid(struct sk_buff *skb, struct netlink_callback *cb)
 		.s_idx = cb->args[0],
 	};
 
-	rcu_read_lock();
+	spin_lock_bh(&net->nsid_lock);
 	idr_for_each(&net->netns_ids, rtnl_net_dumpid_one, &net_cb);
-	rcu_read_unlock();
+	spin_unlock_bh(&net->nsid_lock);
 
 	cb->args[0] = net_cb.idx;
 	return skb->len;
@@ -918,8 +889,6 @@ static int __register_pernet_operations(struct list_head *list,
 out_undo:
 	/* If I have an error cleanup all namespaces I initialized */
 	list_del(&ops->list);
-	ops_pre_exit_list(ops, &net_exit_list);
-	synchronize_rcu();
 	ops_exit_list(ops, &net_exit_list);
 	ops_free_list(ops, &net_exit_list);
 	return error;
@@ -933,8 +902,6 @@ static void __unregister_pernet_operations(struct pernet_operations *ops)
 	list_del(&ops->list);
 	for_each_net(net)
 		list_add_tail(&net->exit_list, &net_exit_list);
-	ops_pre_exit_list(ops, &net_exit_list);
-	synchronize_rcu();
 	ops_exit_list(ops, &net_exit_list);
 	ops_free_list(ops, &net_exit_list);
 }
@@ -959,8 +926,6 @@ static void __unregister_pernet_operations(struct pernet_operations *ops)
 	} else {
 		LIST_HEAD(net_exit_list);
 		list_add(&init_net.exit_list, &net_exit_list);
-		ops_pre_exit_list(ops, &net_exit_list);
-		synchronize_rcu();
 		ops_exit_list(ops, &net_exit_list);
 		ops_free_list(ops, &net_exit_list);
 	}
@@ -985,11 +950,7 @@ again:
 			}
 			return error;
 		}
-		/* This does not require READ_ONCE as writers already hold
-		 * pernet_ops_rwsem. But WRITE_ONCE is needed to protect
-		 * net_alloc_generic.
-		 */
-		WRITE_ONCE(max_gen_ptrs, max(max_gen_ptrs, *ops->id + 1));
+		max_gen_ptrs = max(max_gen_ptrs, *ops->id + 1);
 	}
 	error = __register_pernet_operations(list, ops);
 	if (error) {

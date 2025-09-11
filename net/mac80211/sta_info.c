@@ -244,24 +244,6 @@ struct sta_info *sta_info_get_by_idx(struct ieee80211_sub_if_data *sdata,
  */
 void sta_info_free(struct ieee80211_local *local, struct sta_info *sta)
 {
-	/*
-	 * If we had used sta_info_pre_move_state() then we might not
-	 * have gone through the state transitions down again, so do
-	 * it here now (and warn if it's inserted).
-	 *
-	 * This will clear state such as fast TX/RX that may have been
-	 * allocated during state transitions.
-	 */
-	while (sta->sta_state > IEEE80211_STA_NONE) {
-		int ret;
-
-		WARN_ON_ONCE(test_sta_flag(sta, WLAN_STA_INSERTED));
-
-		ret = sta_info_move_state(sta, sta->sta_state - 1);
-		if (WARN_ONCE(ret, "sta_info_move_state() returned %d\n", ret))
-			break;
-	}
-
 	if (sta->rate_ctrl)
 		rate_control_free_sta(sta);
 
@@ -366,8 +348,6 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 	sta->rx_stats.last_rx = jiffies;
 
 	u64_stats_init(&sta->rx_stats.syncp);
-
-	ieee80211_init_frag_cache(&sta->frags);
 
 	sta->sta_state = IEEE80211_STA_NONE;
 
@@ -602,8 +582,6 @@ static int sta_info_insert_finish(struct sta_info *sta) __acquires(RCU)
 	if (ieee80211_vif_is_mesh(&sdata->vif))
 		mesh_accept_plinks_update(sdata);
 
-	ieee80211_check_fast_xmit(sta);
-
 	return 0;
  out_remove:
 	sta_info_hash_del(local, sta);
@@ -611,7 +589,7 @@ static int sta_info_insert_finish(struct sta_info *sta) __acquires(RCU)
  out_drop_sta:
 	local->num_sta--;
 	synchronize_net();
-	cleanup_single_sta(sta);
+	__cleanup_single_sta(sta);
  out_err:
 	mutex_unlock(&local->sta_mtx);
 	kfree(sinfo);
@@ -630,13 +608,19 @@ int sta_info_insert_rcu(struct sta_info *sta) __acquires(RCU)
 
 	err = sta_info_insert_check(sta);
 	if (err) {
-		sta_info_free(local, sta);
 		mutex_unlock(&local->sta_mtx);
 		rcu_read_lock();
-		return err;
+		goto out_free;
 	}
 
-	return sta_info_insert_finish(sta);
+	err = sta_info_insert_finish(sta);
+	if (err)
+		goto out_free;
+
+	return 0;
+ out_free:
+	sta_info_free(local, sta);
+	return err;
 }
 
 int sta_info_insert(struct sta_info *sta)
@@ -944,8 +928,7 @@ static int __must_check __sta_info_destroy_part1(struct sta_info *sta)
 	list_del_rcu(&sta->list);
 	sta->removed = true;
 
-	if (sta->uploaded)
-		drv_sta_pre_rcu_remove(local, sta->sdata, sta);
+	drv_sta_pre_rcu_remove(local, sta->sdata, sta);
 
 	if (sdata->vif.type == NL80211_IFTYPE_AP_VLAN &&
 	    rcu_access_pointer(sdata->u.vlan.sta) == sta)
@@ -1009,8 +992,6 @@ static void __sta_info_destroy_part2(struct sta_info *sta)
 
 	rate_control_remove_sta_debugfs(sta);
 	ieee80211_sta_debugfs_remove(sta);
-
-	ieee80211_destroy_frag_cache(&sta->frags);
 
 	cleanup_single_sta(sta);
 }
@@ -1249,7 +1230,7 @@ void ieee80211_sta_ps_deliver_wakeup(struct sta_info *sta)
 	skb_queue_head_init(&pending);
 
 	/* sync with ieee80211_tx_h_unicast_ps_buf */
-	spin_lock_bh(&sta->ps_lock);
+	spin_lock(&sta->ps_lock);
 	/* Send all buffered frames to the station */
 	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
 		int count = skb_queue_len(&pending), tmp;
@@ -1278,7 +1259,7 @@ void ieee80211_sta_ps_deliver_wakeup(struct sta_info *sta)
 	 */
 	clear_sta_flag(sta, WLAN_STA_PSPOLL);
 	clear_sta_flag(sta, WLAN_STA_UAPSD);
-	spin_unlock_bh(&sta->ps_lock);
+	spin_unlock(&sta->ps_lock);
 
 	atomic_dec(&ps->num_sta_ps);
 

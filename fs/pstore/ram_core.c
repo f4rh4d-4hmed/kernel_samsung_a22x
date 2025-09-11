@@ -28,6 +28,9 @@
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <asm/page.h>
+#ifdef CONFIG_SEC_LOG_HOOK_PMSG
+#include <linux/sec_debug.h>
+#endif
 
 struct persistent_ram_buffer {
 	uint32_t    sig;
@@ -35,6 +38,13 @@ struct persistent_ram_buffer {
 	atomic_t    size;
 	uint8_t     data[0];
 };
+
+#ifdef __aarch64__
+#ifdef memcpy
+#undef memcpy
+#endif
+#define memcpy memcpy_toio
+#endif
 
 #define PERSISTENT_RAM_SIG (0x43474244) /* DBGC */
 
@@ -190,7 +200,7 @@ static int persistent_ram_init_ecc(struct persistent_ram_zone *prz,
 {
 	int numerr;
 	struct persistent_ram_buffer *buffer = prz->buffer;
-	size_t ecc_blocks;
+	int ecc_blocks;
 	size_t ecc_total;
 
 	if (!ecc_info || !ecc_info->ecc_size)
@@ -276,6 +286,10 @@ static int notrace persistent_ram_update_user(struct persistent_ram_zone *prz,
 	struct persistent_ram_buffer *buffer = prz->buffer;
 	int ret = unlikely(__copy_from_user(buffer->data + start, s, count)) ?
 		-EFAULT : 0;
+
+#ifdef CONFIG_SEC_LOG_HOOK_PMSG		
+	sec_log_hook_pmsg(buffer->data + start, count);
+#endif			
 	persistent_ram_update_ecc(prz, start, count);
 	return ret;
 }
@@ -389,8 +403,13 @@ void persistent_ram_zap(struct persistent_ram_zone *prz)
 	persistent_ram_update_header_ecc(prz);
 }
 
+#ifdef CONFIG_SEC_DEBUG
+void *persistent_ram_vmap(phys_addr_t start, size_t size,
+		unsigned int memtype)
+#else
 static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 		unsigned int memtype)
+#endif
 {
 	struct page **pages;
 	phys_addr_t page_start;
@@ -418,11 +437,7 @@ static void *persistent_ram_vmap(phys_addr_t start, size_t size,
 		phys_addr_t addr = page_start + i * PAGE_SIZE;
 		pages[i] = pfn_to_page(addr >> PAGE_SHIFT);
 	}
-	/*
-	 * VM_IOREMAP used here to bypass this region during vread()
-	 * and kmap_atomic() (i.e. kcore) to avoid __va() failures.
-	 */
-	vaddr = vmap(pages, page_count, VM_MAP | VM_IOREMAP, prot);
+	vaddr = vmap(pages, page_count, VM_MAP, prot);
 	kfree(pages);
 
 	/*
@@ -492,7 +507,7 @@ static int persistent_ram_post_init(struct persistent_ram_zone *prz, u32 sig,
 	sig ^= PERSISTENT_RAM_SIG;
 
 	if (prz->buffer->sig == sig) {
-		if (buffer_size(prz) == 0 && buffer_start(prz) == 0) {
+		if (buffer_size(prz) == 0) {
 			pr_debug("found existing empty buffer\n");
 			return 0;
 		}

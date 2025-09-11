@@ -1846,10 +1846,8 @@ static inline int snd_hdspm_midi_output_possible (struct hdspm *hdspm, int id)
 
 static void snd_hdspm_flush_midi_input(struct hdspm *hdspm, int id)
 {
-	int count = 256;
-
-	while (snd_hdspm_midi_input_available(hdspm, id) && --count)
-		snd_hdspm_midi_read_byte(hdspm, id);
+	while (snd_hdspm_midi_input_available (hdspm, id))
+		snd_hdspm_midi_read_byte (hdspm, id);
 }
 
 static int snd_hdspm_midi_output_write (struct hdspm_midi *hmidi)
@@ -6915,8 +6913,7 @@ static int snd_hdspm_free(struct hdspm * hdspm)
 	if (hdspm->port)
 		pci_release_regions(hdspm->pci);
 
-	if (pci_is_enabled(hdspm->pci))
-		pci_disable_device(hdspm->pci);
+	pci_disable_device(hdspm->pci);
 	return 0;
 }
 

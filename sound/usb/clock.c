@@ -220,6 +220,13 @@ static int __uac_clock_find_source(struct snd_usb_audio *chip,
 			return -EINVAL;
 		}
 
+		if ((size_t)&selector->baCSourceID[ret - 1] >=
+				(size_t)(chip->ctrl_intf->extra + chip->ctrl_intf->extralen)) {
+			usb_audio_err(chip,
+				"%s(): error. out of boundary, ret %d\n",
+				__func__, ret);
+			return -EINVAL;
+		}
 		cur = ret;
 		ret = __uac_clock_find_source(chip, selector->baCSourceID[ret - 1],
 					       visited, validate);
@@ -233,6 +240,13 @@ static int __uac_clock_find_source(struct snd_usb_audio *chip,
 			if (i == cur)
 				continue;
 
+			if ((size_t)&selector->baCSourceID[i - 1] >=
+					(size_t)(chip->ctrl_intf->extra + chip->ctrl_intf->extralen)) {
+				usb_audio_err(chip,
+					"%s(): error. out of boundary, i %d\n",
+					__func__, i);
+				break;
+			}
 			ret = __uac_clock_find_source(chip, selector->baCSourceID[i - 1],
 				visited, true);
 			if (ret < 0)
@@ -327,12 +341,6 @@ static int set_sample_rate_v1(struct snd_usb_audio *chip, int iface,
 	}
 
 	crate = data[0] | (data[1] << 8) | (data[2] << 16);
-	if (!crate) {
-		dev_info(&dev->dev, "failed to read current rate; disabling the check\n");
-		chip->sample_rate_read_error = 3; /* three strikes, see above */
-		return 0;
-	}
-
 	if (crate != rate) {
 		dev_warn(&dev->dev, "current rate %d is different from the runtime rate %d\n", crate, rate);
 		// runtime->rate = crate;

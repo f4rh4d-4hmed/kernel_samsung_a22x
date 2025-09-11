@@ -383,16 +383,6 @@ config INET_IPCOMP
 
 	  If unsure, say Y.
 
-config INET_TABLE_PERTURB_ORDER
-	int "INET: Source port perturbation table size (as power of 2)" if EXPERT
-	default 16
-	help
-	  Source port perturbation table size (as power of 2) for
-	  RFC 6056 3.3.4.  Algorithm 4: Double-Hash Port Selection Algorithm.
-
-	  The default is almost always what you want.
-	  Only change this if you know what you are doing.
-
 config INET_XFRM_TUNNEL
 	tristate
 	select INET_TUNNEL
@@ -472,6 +462,13 @@ config INET_DIAG_DESTROY
 	  this way interrupts any blocking read/write/connect operations on
 	  the socket and causes future socket calls to behave as if the socket
 	  had been disconnected.
+	  If unsure, say N.
+
+config LARGE_TCP_INITIAL_BUFFER
+	bool "TCP: lock the initial window size to 64K"
+	default n
+	---help---
+	  Lock the initial TCP window size to 64K.
 	  If unsure, say N.
 
 menuconfig TCP_CONG_ADVANCED
@@ -688,7 +685,7 @@ config TCP_CONG_BBR
 
 choice
 	prompt "Default TCP congestion control"
-	default DEFAULT_CUBIC
+	default DEFAULT_BIC
 	help
 	  Select the TCP congestion control that will be used by default
 	  for all connections.

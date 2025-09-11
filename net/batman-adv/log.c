@@ -24,7 +24,6 @@
 #include <linux/export.h>
 #include <linux/fcntl.h>
 #include <linux/fs.h>
-#include <linux/gfp.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -196,7 +195,6 @@ static const struct file_operations batadv_log_fops = {
 	.read           = batadv_log_read,
 	.poll           = batadv_log_poll,
 	.llseek         = no_llseek,
-	.owner          = THIS_MODULE,
 };
 
 int batadv_debug_log_setup(struct batadv_priv *bat_priv)

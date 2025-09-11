@@ -471,8 +471,7 @@ static void mlxsw_emad_trans_timeout_schedule(struct mlxsw_reg_trans *trans)
 	if (trans->core->fw_flash_in_progress)
 		timeout = msecs_to_jiffies(MLXSW_EMAD_TIMEOUT_DURING_FW_FLASH_MS);
 
-	queue_delayed_work(trans->core->emad_wq, &trans->timeout_dw,
-			   timeout << trans->retries);
+	queue_delayed_work(trans->core->emad_wq, &trans->timeout_dw, timeout);
 }
 
 static int mlxsw_emad_transmit(struct mlxsw_core *mlxsw_core,
@@ -520,9 +519,6 @@ static void mlxsw_emad_transmit_retry(struct mlxsw_core *mlxsw_core,
 		trans->retries++;
 		err = mlxsw_emad_transmit(trans->core, trans);
 		if (err == 0)
-			return;
-
-		if (!atomic_dec_and_test(&trans->active))
 			return;
 	} else {
 		err = -EIO;
@@ -593,7 +589,7 @@ free_skb:
 
 static const struct mlxsw_listener mlxsw_emad_rx_listener =
 	MLXSW_RXL(mlxsw_emad_rx_listener_func, ETHEMAD, TRAP_TO_CPU, false,
-		  EMAD, FORWARD);
+		  EMAD, DISCARD);
 
 static int mlxsw_emad_init(struct mlxsw_core *mlxsw_core)
 {

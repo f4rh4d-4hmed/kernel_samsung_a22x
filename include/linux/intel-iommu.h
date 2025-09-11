@@ -434,8 +434,6 @@ struct intel_iommu {
 	struct iommu_device iommu;  /* IOMMU core code handle */
 	int		node;
 	u32		flags;      /* Software defined flags */
-
-	struct dmar_drhd_unit *drhd;
 };
 
 static inline void __iommu_flush_cache(

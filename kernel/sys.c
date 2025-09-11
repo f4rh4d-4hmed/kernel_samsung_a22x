@@ -72,6 +72,13 @@
 #include <linux/uaccess.h>
 #include <asm/io.h>
 #include <asm/unistd.h>
+#ifdef CONFIG_MTK_TASK_TURBO
+#include <mt-plat/turbo_common.h>
+#endif
+
+#ifdef CONFIG_SECURITY_DEFEX
+#include <linux/defex.h>
+#endif
 
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a, b)	(-EINVAL)
@@ -779,6 +786,11 @@ SYSCALL_DEFINE1(setfsuid, uid_t, uid)
 	if (!new)
 		return old_fsuid;
 
+#ifdef CONFIG_SECURITY_DEFEX
+	if (task_defex_enforce(current, NULL, -__NR_setfsuid))
+		return old_fsuid;
+#endif
+
 	if (uid_eq(kuid, old->uid)  || uid_eq(kuid, old->euid)  ||
 	    uid_eq(kuid, old->suid) || uid_eq(kuid, old->fsuid) ||
 	    ns_capable(old->user_ns, CAP_SETUID)) {
@@ -817,6 +829,11 @@ SYSCALL_DEFINE1(setfsgid, gid_t, gid)
 	new = prepare_creds();
 	if (!new)
 		return old_fsgid;
+
+#ifdef CONFIG_SECURITY_DEFEX
+	if (task_defex_enforce(current, NULL, -__NR_setfsgid))
+		return old_fsgid;
+#endif
 
 	if (gid_eq(kgid, old->gid)  || gid_eq(kgid, old->egid)  ||
 	    gid_eq(kgid, old->sgid) || gid_eq(kgid, old->fsgid) ||
@@ -1182,21 +1199,40 @@ static int override_release(char __user *release, size_t len)
 	return ret;
 }
 
+static int override_version(struct new_utsname __user *name)
+{
+#ifdef CONFIG_F2FS_REPORT_FAKE_KERNEL_VERSION
+	int ret;
+
+	if (strcmp(current->comm, "fsck.f2fs"))
+		return 0;
+
+	ret = copy_to_user(name->release, CONFIG_F2FS_FAKE_KERNEL_RELEASE,
+			   strlen(CONFIG_F2FS_FAKE_KERNEL_RELEASE) + 1);
+	if (ret)
+		return ret;
+
+	ret = copy_to_user(name->version, CONFIG_F2FS_FAKE_KERNEL_VERSION,
+			   strlen(CONFIG_F2FS_FAKE_KERNEL_VERSION) + 1);
+
+	return ret;
+#else
+	return 0;
+#endif
+}
+
+#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+extern void susfs_spoof_uname(struct new_utsname* tmp);
+#endif
 SYSCALL_DEFINE1(newuname, struct new_utsname __user *, name)
 {
 	struct new_utsname tmp;
 
 	down_read(&uts_sem);
 	memcpy(&tmp, utsname(), sizeof(tmp));
-	if (!strncmp(current->comm, "bpfloader", 9) ||
-	    !strncmp(current->comm, "netbpfload", 10) ||
-	    !strncmp(current->comm, "netd", 4)) {
-		if (current_uid().val == 0) {
-			strcpy(tmp.release, "5.4.186");
-			pr_debug("fake uname: %s/%d release=%s\n",
-				 current->comm, current->pid, tmp.release);
-		}
-	}
+#ifdef CONFIG_KSU_SUSFS_SPOOF_UNAME
+	susfs_spoof_uname(&tmp);
+#endif
 	up_read(&uts_sem);
 	if (copy_to_user(name, &tmp, sizeof(tmp)))
 		return -EFAULT;
@@ -1489,8 +1525,6 @@ int do_prlimit(struct task_struct *tsk, unsigned int resource,
 
 	if (resource >= RLIM_NLIMITS)
 		return -EINVAL;
-	resource = array_index_nospec(resource, RLIM_NLIMITS);
-
 	if (new_rlim) {
 		if (new_rlim->rlim_cur > new_rlim->rlim_max)
 			return -EINVAL;
@@ -1676,86 +1710,73 @@ void getrusage(struct task_struct *p, int who, struct rusage *r)
 	struct task_struct *t;
 	unsigned long flags;
 	u64 tgutime, tgstime, utime, stime;
-	unsigned long maxrss;
-	struct mm_struct *mm;
-	struct signal_struct *sig = p->signal;
-	unsigned int seq = 0;
+	unsigned long maxrss = 0;
 
-retry:
-	memset(r, 0, sizeof(*r));
+	memset((char *)r, 0, sizeof (*r));
 	utime = stime = 0;
-	maxrss = 0;
 
 	if (who == RUSAGE_THREAD) {
 		task_cputime_adjusted(current, &utime, &stime);
 		accumulate_thread_rusage(p, r);
-		maxrss = sig->maxrss;
-		goto out_thread;
+		maxrss = p->signal->maxrss;
+		goto out;
 	}
 
-	flags = read_seqbegin_or_lock_irqsave(&sig->stats_lock, &seq);
+	if (!lock_task_sighand(p, &flags))
+		return;
 
 	switch (who) {
 	case RUSAGE_BOTH:
 	case RUSAGE_CHILDREN:
-		utime = sig->cutime;
-		stime = sig->cstime;
-		r->ru_nvcsw = sig->cnvcsw;
-		r->ru_nivcsw = sig->cnivcsw;
-		r->ru_minflt = sig->cmin_flt;
-		r->ru_majflt = sig->cmaj_flt;
-		r->ru_inblock = sig->cinblock;
-		r->ru_oublock = sig->coublock;
-		maxrss = sig->cmaxrss;
+		utime = p->signal->cutime;
+		stime = p->signal->cstime;
+		r->ru_nvcsw = p->signal->cnvcsw;
+		r->ru_nivcsw = p->signal->cnivcsw;
+		r->ru_minflt = p->signal->cmin_flt;
+		r->ru_majflt = p->signal->cmaj_flt;
+		r->ru_inblock = p->signal->cinblock;
+		r->ru_oublock = p->signal->coublock;
+		maxrss = p->signal->cmaxrss;
 
 		if (who == RUSAGE_CHILDREN)
 			break;
 
 	case RUSAGE_SELF:
-		r->ru_nvcsw += sig->nvcsw;
-		r->ru_nivcsw += sig->nivcsw;
-		r->ru_minflt += sig->min_flt;
-		r->ru_majflt += sig->maj_flt;
-		r->ru_inblock += sig->inblock;
-		r->ru_oublock += sig->oublock;
-		if (maxrss < sig->maxrss)
-			maxrss = sig->maxrss;
-
-		rcu_read_lock();
-		__for_each_thread(sig, t)
+		thread_group_cputime_adjusted(p, &tgutime, &tgstime);
+		utime += tgutime;
+		stime += tgstime;
+		r->ru_nvcsw += p->signal->nvcsw;
+		r->ru_nivcsw += p->signal->nivcsw;
+		r->ru_minflt += p->signal->min_flt;
+		r->ru_majflt += p->signal->maj_flt;
+		r->ru_inblock += p->signal->inblock;
+		r->ru_oublock += p->signal->oublock;
+		if (maxrss < p->signal->maxrss)
+			maxrss = p->signal->maxrss;
+		t = p;
+		do {
 			accumulate_thread_rusage(t, r);
-		rcu_read_unlock();
-
+		} while_each_thread(p, t);
 		break;
 
 	default:
 		BUG();
 	}
+	unlock_task_sighand(p, &flags);
 
-	if (need_seqretry(&sig->stats_lock, seq)) {
-		seq = 1;
-		goto retry;
-	}
-	done_seqretry_irqrestore(&sig->stats_lock, seq, flags);
-
-	if (who == RUSAGE_CHILDREN)
-		goto out_children;
-
-	thread_group_cputime_adjusted(p, &tgutime, &tgstime);
-	utime += tgutime;
-	stime += tgstime;
-
-out_thread:
-	mm = get_task_mm(p);
-	if (mm) {
-		setmax_mm_hiwater_rss(&maxrss, mm);
-		mmput(mm);
-	}
-
-out_children:
-	r->ru_maxrss = maxrss * (PAGE_SIZE / 1024); /* convert pages to KBs */
+out:
 	r->ru_utime = ns_to_timeval(utime);
 	r->ru_stime = ns_to_timeval(stime);
+
+	if (who != RUSAGE_CHILDREN) {
+		struct mm_struct *mm = get_task_mm(p);
+
+		if (mm) {
+			setmax_mm_hiwater_rss(&maxrss, mm);
+			mmput(mm);
+		}
+	}
+	r->ru_maxrss = maxrss * (PAGE_SIZE / 1024); /* convert pages to KBs */
 }
 
 SYSCALL_DEFINE2(getrusage, int, who, struct rusage __user *, ru)
@@ -1904,6 +1925,13 @@ static int validate_prctl_map(struct prctl_mm_map *prctl_map)
 #undef __prctl_check_order
 
 	error = -EINVAL;
+
+	/*
+	 * @brk should be after @end_data in traditional maps.
+	 */
+	if (prctl_map->start_brk <= prctl_map->end_data ||
+	    prctl_map->brk <= prctl_map->end_data)
+		goto out;
 
 	/*
 	 * Neither we should allow to override limits if they set.
@@ -2434,6 +2462,9 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 			return -EFAULT;
 		set_task_comm(me, comm);
 		proc_comm_connector(me);
+#ifdef CONFIG_MTK_TASK_TURBO
+		sys_set_turbo_task(me);
+#endif
 		break;
 	case PR_GET_NAME:
 		get_task_comm(comm, me);

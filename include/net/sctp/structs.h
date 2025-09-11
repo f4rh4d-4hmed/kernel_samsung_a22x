@@ -1269,10 +1269,10 @@ struct sctp_endpoint {
 	__u16 active_key_id;
 	__u8  auth_enable:1,
 	      prsctp_enable:1,
+	      asconf_enable:1,
 	      reconf_enable:1;
 
 	__u8  strreset_enable;
-	struct rcu_head rcu;
 };
 
 /* Recover the outter endpoint structure. */
@@ -1288,7 +1288,7 @@ static inline struct sctp_endpoint *sctp_ep(struct sctp_ep_common *base)
 struct sctp_endpoint *sctp_endpoint_new(struct sock *, gfp_t);
 void sctp_endpoint_free(struct sctp_endpoint *);
 void sctp_endpoint_put(struct sctp_endpoint *);
-int sctp_endpoint_hold(struct sctp_endpoint *ep);
+void sctp_endpoint_hold(struct sctp_endpoint *);
 void sctp_endpoint_add_asoc(struct sctp_endpoint *, struct sctp_association *);
 struct sctp_association *sctp_endpoint_lookup_assoc(
 	const struct sctp_endpoint *ep,

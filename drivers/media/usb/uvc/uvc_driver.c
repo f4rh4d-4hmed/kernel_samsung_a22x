@@ -395,7 +395,7 @@ static int uvc_parse_format(struct uvc_device *dev,
 	unsigned int width_multiplier = 1;
 	unsigned int interval;
 	unsigned int i, n;
-	__u8 ftype;
+	u8 ftype = UVC_VS_UNDEFINED;
 
 	format->type = buffer[2];
 	format->index = buffer[3];
@@ -532,7 +532,7 @@ static int uvc_parse_format(struct uvc_device *dev,
 	 * based formats have frame descriptors.
 	 */
 	while (buflen > 2 && buffer[1] == USB_DT_CS_INTERFACE &&
-	       buffer[2] == ftype) {
+	       buffer[2] == ftype && buffer[2] != UVC_VS_UNDEFINED) {
 		frame = &format->frame[format->nframes];
 		if (ftype != UVC_VS_FRAME_FRAME_BASED)
 			n = buflen > 25 ? buffer[25] : 0;
@@ -821,26 +821,16 @@ static int uvc_parse_streaming(struct uvc_device *dev,
 		goto error;
 	}
 
-	/*
-	 * Allocate memory for the formats, the frames and the intervals,
-	 * plus any required padding to guarantee that everything has the
-	 * correct alignment.
-	 */
-	size = nformats * sizeof(*format);
-	size = ALIGN(size, __alignof__(*frame)) + nframes * sizeof(*frame);
-	size = ALIGN(size, __alignof__(*interval))
-	     + nintervals * sizeof(*interval);
-
+	size = nformats * sizeof *format + nframes * sizeof *frame
+	     + nintervals * sizeof *interval;
 	format = kzalloc(size, GFP_KERNEL);
-	if (!format) {
+	if (format == NULL) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	frame = (void *)format + nformats * sizeof(*format);
-	frame = PTR_ALIGN(frame, __alignof__(*frame));
-	interval = (void *)frame + nframes * sizeof(*frame);
-	interval = PTR_ALIGN(interval, __alignof__(*interval));
+	frame = (struct uvc_frame *)&format[nformats];
+	interval = (__u32 *)&frame[nframes];
 
 	streaming->format = format;
 	streaming->nformats = nformats;
@@ -914,10 +904,7 @@ static struct uvc_entity *uvc_alloc_entity(u16 type, u8 id,
 	unsigned int i;
 
 	extra_size = roundup(extra_size, sizeof(*entity->pads));
-	if (num_pads)
-		num_inputs = type & UVC_TERM_OUTPUT ? num_pads : num_pads - 1;
-	else
-		num_inputs = 0;
+	num_inputs = (type & UVC_TERM_OUTPUT) ? num_pads : num_pads - 1;
 	size = sizeof(*entity) + extra_size + sizeof(*entity->pads) * num_pads
 	     + num_inputs;
 	entity = kzalloc(size, GFP_KERNEL);
@@ -933,7 +920,7 @@ static struct uvc_entity *uvc_alloc_entity(u16 type, u8 id,
 
 	for (i = 0; i < num_inputs; ++i)
 		entity->pads[i].flags = MEDIA_PAD_FL_SINK;
-	if (!UVC_ENTITY_IS_OTERM(entity) && num_pads)
+	if (!UVC_ENTITY_IS_OTERM(entity))
 		entity->pads[num_pads-1].flags = MEDIA_PAD_FL_SOURCE;
 
 	entity->bNrInPins = num_inputs;

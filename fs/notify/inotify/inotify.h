@@ -20,7 +20,6 @@ static inline struct inotify_event_info *INOTIFY_E(struct fsnotify_event *fse)
 {
 	return container_of(fse, struct inotify_event_info, fse);
 }
-
 /*
  * INOTIFY_USER_FLAGS represents all of the mask bits that we expose to
  * userspace.  There is at least one bit (FS_EVENT_ON_CHILD) which is

@@ -100,13 +100,15 @@ static int cls_bpf_classify(struct sk_buff *skb, const struct tcf_proto *tp,
 		if (tc_skip_sw(prog->gen_flags)) {
 			filter_res = prog->exts_integrated ? TC_ACT_UNSPEC : 0;
 		} else if (at_ingress) {
+			if ((strncmp(skb->dev->name, "ccmni", 2) == 0))
+				skb->mac_len = 0;
 			/* It is safe to push/pull even if skb_shared() */
 			__skb_push(skb, skb->mac_len);
-			bpf_compute_data_pointers(skb);
+			bpf_compute_data_end(skb);
 			filter_res = BPF_PROG_RUN(prog->filter, skb);
 			__skb_pull(skb, skb->mac_len);
 		} else {
-			bpf_compute_data_pointers(skb);
+			bpf_compute_data_end(skb);
 			filter_res = BPF_PROG_RUN(prog->filter, skb);
 		}
 

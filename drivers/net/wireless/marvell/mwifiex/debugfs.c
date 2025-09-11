@@ -288,11 +288,8 @@ mwifiex_histogram_read(struct file *file, char __user *ubuf,
 	if (!p)
 		return -ENOMEM;
 
-	if (!priv || !priv->hist_data) {
-		ret = -EFAULT;
-		goto free_and_exit;
-	}
-
+	if (!priv || !priv->hist_data)
+		return -EFAULT;
 	phist_data = priv->hist_data;
 
 	p += sprintf(p, "\n"
@@ -347,8 +344,6 @@ mwifiex_histogram_read(struct file *file, char __user *ubuf,
 	ret = simple_read_from_buffer(ubuf, count, ppos, (char *)page,
 				      (unsigned long)p - page);
 
-free_and_exit:
-	free_page(page);
 	return ret;
 }
 
@@ -1000,6 +995,9 @@ mwifiex_dev_debugfs_init(struct mwifiex_private *priv)
 
 	priv->dfs_dev_dir = debugfs_create_dir(priv->netdev->name,
 					       mwifiex_dfs_dir);
+
+	if (!priv->dfs_dev_dir)
+		return;
 
 	MWIFIEX_DFS_ADD_FILE(info);
 	MWIFIEX_DFS_ADD_FILE(debug);

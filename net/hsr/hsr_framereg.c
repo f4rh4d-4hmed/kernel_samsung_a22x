@@ -192,12 +192,8 @@ struct hsr_node *hsr_get_node(struct hsr_port *port, struct sk_buff *skb,
 
 	/* Everyone may create a node entry, connected node to a HSR device. */
 
-	if (ethhdr->h_proto == htons(ETH_P_PRP) ||
-	    ethhdr->h_proto == htons(ETH_P_HSR)) {
-		/* Check if skb contains hsr_ethhdr */
-		if (skb->mac_len < sizeof(struct hsr_ethhdr))
-			return NULL;
-
+	if (ethhdr->h_proto == htons(ETH_P_PRP)
+			|| ethhdr->h_proto == htons(ETH_P_HSR)) {
 		/* Use the existing sequence_nr from the tag as starting point
 		 * for filtering duplicate frames.
 		 */
@@ -314,8 +310,7 @@ void hsr_addr_subst_dest(struct hsr_node *node_src, struct sk_buff *skb,
 
 	node_dst = find_node_by_AddrA(&port->hsr->node_db, eth_hdr(skb)->h_dest);
 	if (!node_dst) {
-		if (net_ratelimit())
-			netdev_err(skb->dev, "%s: Unknown node\n", __func__);
+		WARN_ONCE(1, "%s: Unknown node\n", __func__);
 		return;
 	}
 	if (port->type != node_dst->AddrB_port)

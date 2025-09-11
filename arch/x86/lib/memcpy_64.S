@@ -13,6 +13,8 @@
  * to a jmp to memcpy_erms which does the REP; MOVSB mem copy.
  */
 
+.weak memcpy
+
 /*
  * memcpy - Copy a memory block.
  *
@@ -25,7 +27,7 @@
  * rax original destination
  */
 ENTRY(__memcpy)
-WEAK(memcpy)
+ENTRY(memcpy)
 	ALTERNATIVE_2 "jmp memcpy_orig", "", X86_FEATURE_REP_GOOD, \
 		      "jmp memcpy_erms", X86_FEATURE_ERMS
 

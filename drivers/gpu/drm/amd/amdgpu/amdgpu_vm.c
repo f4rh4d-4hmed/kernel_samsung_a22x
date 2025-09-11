@@ -27,7 +27,6 @@
  */
 #include <linux/dma-fence-array.h>
 #include <linux/interval_tree_generic.h>
-#include <linux/overflow.h>
 #include <drm/drmP.h>
 #include <drm/amdgpu_drm.h>
 #include "amdgpu.h"
@@ -2050,37 +2049,6 @@ struct amdgpu_bo_va *amdgpu_vm_bo_add(struct amdgpu_device *adev,
 	return bo_va;
 }
 
-/* Validate operation parameters to prevent potential abuse */
-static int amdgpu_vm_verify_parameters(struct amdgpu_device *adev,
-					  struct amdgpu_bo *bo,
-					  uint64_t saddr,
-					  uint64_t offset,
-					  uint64_t size)
-{
-	uint64_t tmp, lpfn;
-
-	if (saddr & AMDGPU_GPU_PAGE_MASK
-	    || offset & AMDGPU_GPU_PAGE_MASK
-	    || size & AMDGPU_GPU_PAGE_MASK)
-		return -EINVAL;
-
-	if (check_add_overflow(saddr, size, &tmp)
-	    || check_add_overflow(offset, size, &tmp)
-	    || size == 0 /* which also leads to end < begin */)
-		return -EINVAL;
-
-	/* make sure object fit at this offset */
-	if (bo && offset + size > amdgpu_bo_size(bo))
-		return -EINVAL;
-
-	/* Ensure last pfn not exceed max_pfn */
-	lpfn = (saddr + size - 1) >> AMDGPU_GPU_PAGE_SHIFT;
-	if (lpfn >= adev->vm_manager.max_pfn)
-		return -EINVAL;
-
-	return 0;
-}
-
 /**
  * amdgpu_vm_bo_map - map bo inside a vm
  *
@@ -2104,14 +2072,20 @@ int amdgpu_vm_bo_map(struct amdgpu_device *adev,
 	struct amdgpu_bo *bo = bo_va->base.bo;
 	struct amdgpu_vm *vm = bo_va->base.vm;
 	uint64_t eaddr;
-	int r;
 
-	r = amdgpu_vm_verify_parameters(adev, bo, saddr, offset, size);
-	if (r)
-		return r;
+	/* validate the parameters */
+	if (saddr & AMDGPU_GPU_PAGE_MASK || offset & AMDGPU_GPU_PAGE_MASK ||
+	    size == 0 || size & AMDGPU_GPU_PAGE_MASK)
+		return -EINVAL;
+
+	/* make sure object fit at this offset */
+	eaddr = saddr + size - 1;
+	if (saddr >= eaddr ||
+	    (bo && offset + size > amdgpu_bo_size(bo)))
+		return -EINVAL;
 
 	saddr /= AMDGPU_GPU_PAGE_SIZE;
-	eaddr = saddr + (size - 1) / AMDGPU_GPU_PAGE_SIZE;
+	eaddr /= AMDGPU_GPU_PAGE_SIZE;
 
 	tmp = amdgpu_vm_it_iter_first(&vm->va, saddr, eaddr);
 	if (tmp) {
@@ -2167,9 +2141,16 @@ int amdgpu_vm_bo_replace_map(struct amdgpu_device *adev,
 	uint64_t eaddr;
 	int r;
 
-	r = amdgpu_vm_verify_parameters(adev, bo, saddr, offset, size);
-	if (r)
-		return r;
+	/* validate the parameters */
+	if (saddr & AMDGPU_GPU_PAGE_MASK || offset & AMDGPU_GPU_PAGE_MASK ||
+	    size == 0 || size & AMDGPU_GPU_PAGE_MASK)
+		return -EINVAL;
+
+	/* make sure object fit at this offset */
+	eaddr = saddr + size - 1;
+	if (saddr >= eaddr ||
+	    (bo && offset + size > amdgpu_bo_size(bo)))
+		return -EINVAL;
 
 	/* Allocate all the needed memory */
 	mapping = kmalloc(sizeof(*mapping), GFP_KERNEL);
@@ -2183,7 +2164,7 @@ int amdgpu_vm_bo_replace_map(struct amdgpu_device *adev,
 	}
 
 	saddr /= AMDGPU_GPU_PAGE_SIZE;
-	eaddr = saddr + (size - 1) / AMDGPU_GPU_PAGE_SIZE;
+	eaddr /= AMDGPU_GPU_PAGE_SIZE;
 
 	mapping->start = saddr;
 	mapping->last = eaddr;
@@ -2269,14 +2250,10 @@ int amdgpu_vm_bo_clear_mappings(struct amdgpu_device *adev,
 	struct amdgpu_bo_va_mapping *before, *after, *tmp, *next;
 	LIST_HEAD(removed);
 	uint64_t eaddr;
-	int r;
 
-	r = amdgpu_vm_verify_parameters(adev, NULL, saddr, 0, size);
-	if (r)
-		return r;
-
+	eaddr = saddr + size - 1;
 	saddr /= AMDGPU_GPU_PAGE_SIZE;
-	eaddr = saddr + (size - 1) / AMDGPU_GPU_PAGE_SIZE;
+	eaddr /= AMDGPU_GPU_PAGE_SIZE;
 
 	/* Allocate all the needed memory */
 	before = kzalloc(sizeof(*before), GFP_KERNEL);
@@ -2308,7 +2285,7 @@ int amdgpu_vm_bo_clear_mappings(struct amdgpu_device *adev,
 			after->start = eaddr + 1;
 			after->last = tmp->last;
 			after->offset = tmp->offset;
-			after->offset += (after->start - tmp->start) << PAGE_SHIFT;
+			after->offset += after->start - tmp->start;
 			after->flags = tmp->flags;
 			list_add(&after->list, &tmp->list);
 		}
@@ -2734,10 +2711,6 @@ int amdgpu_vm_ioctl(struct drm_device *dev, void *data, struct drm_file *filp)
 	struct amdgpu_device *adev = dev->dev_private;
 	struct amdgpu_fpriv *fpriv = filp->driver_priv;
 	int r;
-
-	/* No valid flags defined yet */
-	if (args->in.flags)
-		return -EINVAL;
 
 	switch (args->in.op) {
 	case AMDGPU_VM_OP_RESERVE_VMID:

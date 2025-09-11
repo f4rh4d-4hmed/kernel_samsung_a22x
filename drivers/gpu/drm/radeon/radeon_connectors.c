@@ -256,7 +256,7 @@ radeon_connector_update_scratch_regs(struct drm_connector *connector, enum drm_c
 		if (connector->encoder_ids[i] == 0)
 			break;
 
-		encoder = drm_encoder_find(connector->dev,
+		encoder = drm_encoder_find(connector->dev, NULL,
 					   connector->encoder_ids[i]);
 		if (!encoder)
 			continue;
@@ -283,7 +283,8 @@ static struct drm_encoder *radeon_find_encoder(struct drm_connector *connector, 
 		if (connector->encoder_ids[i] == 0)
 			break;
 
-		encoder = drm_encoder_find(connector->dev, connector->encoder_ids[i]);
+		encoder = drm_encoder_find(connector->dev,
+				NULL, connector->encoder_ids[i]);
 		if (!encoder)
 			continue;
 
@@ -397,7 +398,7 @@ static struct drm_encoder *radeon_best_single_encoder(struct drm_connector *conn
 	int enc_id = connector->encoder_ids[0];
 	/* pick the encoder ids */
 	if (enc_id)
-		return drm_encoder_find(connector->dev, enc_id);
+		return drm_encoder_find(connector->dev, NULL, enc_id);
 	return NULL;
 }
 
@@ -489,8 +490,6 @@ static struct drm_display_mode *radeon_fp_native_mode(struct drm_encoder *encode
 	    native_mode->vdisplay != 0 &&
 	    native_mode->clock != 0) {
 		mode = drm_mode_duplicate(dev, native_mode);
-		if (!mode)
-			return NULL;
 		mode->type = DRM_MODE_TYPE_PREFERRED | DRM_MODE_TYPE_DRIVER;
 		drm_mode_set_name(mode);
 
@@ -505,8 +504,6 @@ static struct drm_display_mode *radeon_fp_native_mode(struct drm_encoder *encode
 		 * simpler.
 		 */
 		mode = drm_cvt_mode(dev, native_mode->hdisplay, native_mode->vdisplay, 60, true, false, false);
-		if (!mode)
-			return NULL;
 		mode->type = DRM_MODE_TYPE_PREFERRED | DRM_MODE_TYPE_DRIVER;
 		DRM_DEBUG_KMS("Adding cvt approximation of native panel mode %s\n", mode->name);
 	}
@@ -1391,7 +1388,7 @@ radeon_dvi_detect(struct drm_connector *connector, bool force)
 			if (connector->encoder_ids[i] == 0)
 				break;
 
-			encoder = drm_encoder_find(connector->dev,
+			encoder = drm_encoder_find(connector->dev, NULL,
 						   connector->encoder_ids[i]);
 			if (!encoder)
 				continue;
@@ -1479,7 +1476,8 @@ static struct drm_encoder *radeon_dvi_encoder(struct drm_connector *connector)
 		if (connector->encoder_ids[i] == 0)
 			break;
 
-		encoder = drm_encoder_find(connector->dev, connector->encoder_ids[i]);
+		encoder = drm_encoder_find(connector->dev,
+			NULL, connector->encoder_ids[i]);
 		if (!encoder)
 			continue;
 
@@ -1498,7 +1496,7 @@ static struct drm_encoder *radeon_dvi_encoder(struct drm_connector *connector)
 	/* then check use digitial */
 	/* pick the first one */
 	if (enc_id)
-		return drm_encoder_find(connector->dev, enc_id);
+		return drm_encoder_find(connector->dev, NULL, enc_id);
 	return NULL;
 }
 
@@ -1645,7 +1643,8 @@ u16 radeon_connector_encoder_get_dp_bridge_encoder_id(struct drm_connector *conn
 		if (connector->encoder_ids[i] == 0)
 			break;
 
-		encoder = drm_encoder_find(connector->dev, connector->encoder_ids[i]);
+		encoder = drm_encoder_find(connector->dev,
+				NULL, connector->encoder_ids[i]);
 		if (!encoder)
 			continue;
 
@@ -1674,7 +1673,8 @@ static bool radeon_connector_encoder_is_hbr2(struct drm_connector *connector)
 		if (connector->encoder_ids[i] == 0)
 			break;
 
-		encoder = drm_encoder_find(connector->dev, connector->encoder_ids[i]);
+		encoder = drm_encoder_find(connector->dev,
+			NULL, connector->encoder_ids[i]);
 		if (!encoder)
 			continue;
 

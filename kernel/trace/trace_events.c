@@ -8,6 +8,7 @@
  *
  */
 
+#define DEBUG 1
 #define pr_fmt(fmt) fmt
 
 #include <linux/workqueue.h>
@@ -26,6 +27,8 @@
 #include <asm/setup.h>
 
 #include "trace_output.h"
+
+#include "mtk_ftrace.h"
 
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM "TRACE_SYSTEM"
@@ -370,8 +373,13 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 {
 	struct trace_event_call *call = file->event_call;
 	struct trace_array *tr = file->tr;
+	unsigned long file_flags = file->flags;
 	int ret = 0;
 	int disable;
+
+	if (call->name && ((file->flags & EVENT_FILE_FL_ENABLED) ^ enable))
+		pr_debug("[ftrace]event '%s' is %s\n", trace_event_name(call),
+			 enable ? "enabled" : "disabled");
 
 	switch (enable) {
 	case 0:
@@ -393,8 +401,6 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 				break;
 			disable = file->flags & EVENT_FILE_FL_SOFT_DISABLED;
 			clear_bit(EVENT_FILE_FL_SOFT_MODE_BIT, &file->flags);
-			/* Disable use of trace_buffered_event */
-			trace_buffered_event_disable();
 		} else
 			disable = !(file->flags & EVENT_FILE_FL_SOFT_MODE);
 
@@ -433,8 +439,6 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 			if (atomic_inc_return(&file->sm_ref) > 1)
 				break;
 			set_bit(EVENT_FILE_FL_SOFT_MODE_BIT, &file->flags);
-			/* Enable use of trace_buffered_event */
-			trace_buffered_event_enable();
 		}
 
 		if (!(file->flags & EVENT_FILE_FL_ENABLED)) {
@@ -472,6 +476,15 @@ static int __ftrace_event_enable_disable(struct trace_event_file *file,
 			set_bit(EVENT_FILE_FL_WAS_ENABLED_BIT, &file->flags);
 		}
 		break;
+	}
+
+	/* Enable or disable use of trace_buffered_event */
+	if ((file_flags & EVENT_FILE_FL_SOFT_DISABLED) !=
+	    (file->flags & EVENT_FILE_FL_SOFT_DISABLED)) {
+		if (file->flags & EVENT_FILE_FL_SOFT_DISABLED)
+			trace_buffered_event_enable();
+		else
+			trace_buffered_event_disable();
 	}
 
 	return ret;
@@ -884,8 +897,12 @@ ftrace_event_write(struct file *file, const char __user *ubuf,
 		parser.buffer[parser.idx] = 0;
 
 		ret = ftrace_set_clr_event(tr, parser.buffer + !set, set);
-		if (ret)
+		if (ret) {
+			pr_debug("[ftrace]fail to %s event '%s'\n",
+				 set ? "enable" : "disable",
+				 parser.buffer + !set);
 			goto out_put;
+		}
 	}
 
 	ret = read;
@@ -1108,8 +1125,7 @@ system_enable_read(struct file *filp, char __user *ubuf, size_t cnt,
 	mutex_lock(&event_mutex);
 	list_for_each_entry(file, &tr->events, list) {
 		call = file->event_call;
-		if ((call->flags & TRACE_EVENT_FL_IGNORE_ENABLE) ||
-		    !trace_event_name(call) || !call->class || !call->class->reg)
+		if (!trace_event_name(call) || !call->class || !call->class->reg)
 			continue;
 
 		if (system && strcmp(call->class->system, system->name) != 0)
@@ -1309,7 +1325,6 @@ static int trace_format_open(struct inode *inode, struct file *file)
 	return 0;
 }
 
-#ifdef CONFIG_PERF_EVENTS
 static ssize_t
 event_id_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 {
@@ -1324,7 +1339,6 @@ event_id_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 
 	return simple_read_from_buffer(ubuf, cnt, ppos, buf, len);
 }
-#endif
 
 static ssize_t
 event_filter_read(struct file *filp, char __user *ubuf, size_t cnt,
@@ -1729,12 +1743,10 @@ static const struct file_operations ftrace_event_format_fops = {
 	.release = seq_release,
 };
 
-#ifdef CONFIG_PERF_EVENTS
 static const struct file_operations ftrace_event_id_fops = {
 	.read = event_id_read,
 	.llseek = default_llseek,
 };
-#endif
 
 static const struct file_operations ftrace_event_filter_fops = {
 	.open = tracing_open_generic,
@@ -2244,7 +2256,6 @@ void trace_event_eval_update(struct trace_eval_map **map, int len)
 				update_event_printk(call, map[i]);
 			}
 		}
-		cond_resched();
 	}
 	up_write(&trace_event_sem);
 }
@@ -2253,18 +2264,11 @@ static struct trace_event_file *
 trace_create_new_event(struct trace_event_call *call,
 		       struct trace_array *tr)
 {
-	struct trace_pid_list *pid_list;
 	struct trace_event_file *file;
 
 	file = kmem_cache_alloc(file_cachep, GFP_TRACE);
 	if (!file)
 		return NULL;
-
-	pid_list = rcu_dereference_protected(tr->filtered_pids,
-					     lockdep_is_held(&event_mutex));
-
-	if (pid_list)
-		file->flags |= EVENT_FILE_FL_PID_FILTER;
 
 	file->event_call = call;
 	file->tr = tr;

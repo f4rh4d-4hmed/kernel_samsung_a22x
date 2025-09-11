@@ -2415,6 +2415,8 @@ static int resize_stripes(struct r5conf *conf, int newsize)
 	} else
 		err = -ENOMEM;
 
+	mutex_unlock(&conf->cache_size_mutex);
+
 	conf->slab_cache = sc;
 	conf->active_name = 1-conf->active_name;
 
@@ -2437,8 +2439,6 @@ static int resize_stripes(struct r5conf *conf, int newsize)
 
 	if (!err)
 		conf->pool_size = newsize;
-	mutex_unlock(&conf->cache_size_mutex);
-
 	return err;
 }
 
@@ -2600,7 +2600,7 @@ static void raid5_end_write_request(struct bio *bi)
 	struct stripe_head *sh = bi->bi_private;
 	struct r5conf *conf = sh->raid_conf;
 	int disks = sh->disks, i;
-	struct md_rdev *rdev;
+	struct md_rdev *uninitialized_var(rdev);
 	sector_t first_bad;
 	int bad_sectors;
 	int replacement = 0;
@@ -2668,10 +2668,10 @@ static void raid5_end_write_request(struct bio *bi)
 	if (!test_and_clear_bit(R5_DOUBLE_LOCKED, &sh->dev[i].flags))
 		clear_bit(R5_LOCKED, &sh->dev[i].flags);
 	set_bit(STRIPE_HANDLE, &sh->state);
+	raid5_release_stripe(sh);
 
 	if (sh->batch_head && sh != sh->batch_head)
 		raid5_release_stripe(sh->batch_head);
-	raid5_release_stripe(sh);
 }
 
 static void raid5_error(struct mddev *mddev, struct md_rdev *rdev)
@@ -3720,7 +3720,7 @@ static void handle_stripe_fill(struct stripe_head *sh,
 		 * back cache (prexor with orig_page, and then xor with
 		 * page) in the read path
 		 */
-		if (s->to_read && s->injournal && s->failed) {
+		if (s->injournal && s->failed) {
 			if (test_bit(STRIPE_R5C_CACHING, &sh->state))
 				r5c_make_stripe_write_out(sh);
 			goto out;
@@ -5814,9 +5814,7 @@ static sector_t reshape_request(struct mddev *mddev, sector_t sector_nr, int *sk
 	safepos = conf->reshape_safe;
 	sector_div(safepos, data_disks);
 	if (mddev->reshape_backwards) {
-		if (WARN_ON(writepos < reshape_sectors))
-			return MaxSector;
-
+		BUG_ON(writepos < reshape_sectors);
 		writepos -= reshape_sectors;
 		readpos += reshape_sectors;
 		safepos += reshape_sectors;
@@ -5834,18 +5832,14 @@ static sector_t reshape_request(struct mddev *mddev, sector_t sector_nr, int *sk
 	 * to set 'stripe_addr' which is where we will write to.
 	 */
 	if (mddev->reshape_backwards) {
-		if (WARN_ON(conf->reshape_progress == 0))
-			return MaxSector;
-
+		BUG_ON(conf->reshape_progress == 0);
 		stripe_addr = writepos;
-		if (WARN_ON((mddev->dev_sectors &
-		    ~((sector_t)reshape_sectors - 1)) -
-		    reshape_sectors - stripe_addr != sector_nr))
-			return MaxSector;
+		BUG_ON((mddev->dev_sectors &
+			~((sector_t)reshape_sectors - 1))
+		       - reshape_sectors - stripe_addr
+		       != sector_nr);
 	} else {
-		if (WARN_ON(writepos != sector_nr + reshape_sectors))
-			return MaxSector;
-
+		BUG_ON(writepos != sector_nr + reshape_sectors);
 		stripe_addr = sector_nr;
 	}
 
@@ -6277,9 +6271,6 @@ static void raid5d(struct md_thread *thread)
 		struct bio *bio;
 		int batch_size, released;
 		unsigned int offset;
-
-		if (test_bit(MD_SB_CHANGE_PENDING, &mddev->sb_flags))
-			break;
 
 		released = release_stripe_list(conf, conf->temp_inactive_list);
 		if (released)
@@ -7698,7 +7689,6 @@ static int raid5_add_disk(struct mddev *mddev, struct md_rdev *rdev)
 	 */
 	if (rdev->saved_raid_disk >= 0 &&
 	    rdev->saved_raid_disk >= first &&
-	    rdev->saved_raid_disk <= last &&
 	    conf->disks[rdev->saved_raid_disk].rdev == NULL)
 		first = rdev->saved_raid_disk;
 
