@@ -41,6 +41,8 @@ check_ksu() {
     if [ ! -d "$SRC/KernelSU-Next" ]; then
 	log "$red KernelSU not found in $SRC/KernelSU-Next, Cloning...$nocol"
     #Kernel SU Placeholder
+    #curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s v0.9.5
+    #Kernel SU Placeholder
 	curl -LSs "https://raw.githubusercontent.com/sidex15/KernelSU-Next/refs/heads/next-susfs/kernel/setup.sh" | bash -s next-susfs
     else
 	log "$green KernelSU already $nocol"
