@@ -34,16 +34,16 @@
 #define CPU_DVFS_FREQ15_LL_FY		500000		/* KHz */
 
 /* for DVFS OPP table B (Big cores) - Max frequency increased to 2300MHz */
-#define CPU_DVFS_FREQ0_L_FY		2300000		/* KHz - OVERCLOCKED */
-#define CPU_DVFS_FREQ1_L_FY		2203000		/* KHz */
-#define CPU_DVFS_FREQ2_L_FY		2087000		/* KHz */
-#define CPU_DVFS_FREQ3_L_FY		1995000		/* KHz */
-#define CPU_DVFS_FREQ4_L_FY		1903000		/* KHz */
-#define CPU_DVFS_FREQ5_L_FY		1788000		/* KHz */
-#define CPU_DVFS_FREQ6_L_FY		1719000		/* KHz */
-#define CPU_DVFS_FREQ7_L_FY		1650000		/* KHz */
-#define CPU_DVFS_FREQ8_L_FY		1534000		/* KHz */
-#define CPU_DVFS_FREQ9_L_FY		1418000		/* KHz */
+#define CPU_DVFS_FREQ0_L_FY		    2300000		/* KHz - OVERCLOCKED */
+#define CPU_DVFS_FREQ1_L_FY		    2203000		/* KHz */
+#define CPU_DVFS_FREQ2_L_FY	    	2087000		/* KHz */
+#define CPU_DVFS_FREQ3_L_FY		    1995000		/* KHz */
+#define CPU_DVFS_FREQ4_L_FY		    1903000		/* KHz */
+#define CPU_DVFS_FREQ5_L_FY		    1788000		/* KHz */
+#define CPU_DVFS_FREQ6_L_FY	    	1719000		/* KHz */
+#define CPU_DVFS_FREQ7_L_FY	    	1650000		/* KHz */
+#define CPU_DVFS_FREQ8_L_FY		    1534000		/* KHz */
+#define CPU_DVFS_FREQ9_L_FY	    	1418000		/* KHz */
 #define CPU_DVFS_FREQ10_L_FY		1274000		/* KHz */
 #define CPU_DVFS_FREQ11_L_FY		1129000		/* KHz */
 #define CPU_DVFS_FREQ12_L_FY		1042000		/* KHz */
