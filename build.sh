@@ -7,8 +7,8 @@ set -e
 
 # Define global variables
 SRC="$(pwd)"
-export KBUILD_BUILD_USER="azure"
-export KBUILD_BUILD_HOST="naifiprjkt"
+export KBUILD_BUILD_USER="test"
+export KBUILD_BUILD_HOST="byf4r"
 ANYKERNEL3_DIR=AK
 DEVICE=A226B
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
